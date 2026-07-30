@@ -1,0 +1,31 @@
+# nfpm config used by the GitHub Actions pipeline to build .deb and .rpm
+# packages. ARCH and PKG_VERSION are supplied by the pipeline, which also stages
+# the binary for the target architecture at packaging/codemcp (nfpm does not
+# expand environment variables inside contents paths).
+name: codemcp
+arch: ${ARCH}
+platform: linux
+version: ${PKG_VERSION}
+section: devel
+priority: optional
+maintainer: codemcp maintainers
+description: |
+  Model Context Protocol server exposing a coding agent for the current
+  workspace. codemcp serves MCP revision 2026-07-28 over Streamable HTTP or
+  stdio, exposing the project's own build, test and lint commands as tools
+  along with file, git, GitHub Actions and PostgreSQL tools.
+homepage: https://github.com/chriswirz/code-mcp
+license: MIT
+contents:
+  - src: packaging/codemcp
+    dst: /usr/bin/codemcp
+    file_info:
+      mode: 0755
+  - src: README.md
+    dst: /usr/share/doc/codemcp/README.md
+    file_info:
+      mode: 0644
+  - src: config.example.json
+    dst: /usr/share/doc/codemcp/config.example.json
+    file_info:
+      mode: 0644
