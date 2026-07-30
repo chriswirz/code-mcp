@@ -1,0 +1,14 @@
+dist/
+out/
+staging/
+codemcp
+codemcp.exe
+# `go build ./...` names its output after the module directory.
+code-mcp
+*.exe
+*.exe~
+
+# The report_issue credential, when it is kept in a file rather than the environment.
+.issue-token
+*.token
+config.json
