@@ -1,0 +1,77 @@
+﻿{
+  "server": {
+    "name": "code-mcp",
+    "version": "",
+    "instructions": "Coding agent for this repository. Call system_info before writing your first shell command or path. Prefer the project commands over guessing build incantations, and ask git_diff for stat or name_only before a full patch.",
+    "transport": "http",
+    "urls": ["http://0.0.0.0:8765/mcp"],
+    "allowed_origins": ["*"],
+    "allowed_headers": ["*"],
+    "auth_token": "",
+    "legacy_compatibility": true
+  },
+  "workspace": {
+    "root": "",
+    "max_file_bytes": 1048576,
+    "max_results": 200,
+    "exclude": [".git", "node_modules", "vendor", "dist", "out", "target", ".venv"],
+    "allow_write": true
+  },
+  "commands": [
+    {
+      "name": "build",
+      "description": "Build every package in the module.",
+      "command": "go build ./...",
+      "timeout_seconds": 300
+    },
+    {
+      "name": "test",
+      "description": "Run the test suite. Pass args like \"-run TestFoo ./pkg/...\" to narrow it; defaults to the whole module.",
+      "command": "go test {{args}}",
+      "default_args": "./...",
+      "accepts_args": true,
+      "timeout_seconds": 900
+    },
+    {
+      "name": "lint",
+      "description": "Vet and lint the code base.",
+      "command": "go vet ./...",
+      "read_only": true,
+      "timeout_seconds": 300
+    },
+    {
+      "name": "fmt",
+      "description": "Format all Go sources in place.",
+      "command": "gofmt -l -w ."
+    }
+  ],
+  "git": {
+    "enabled": true,
+    "git_path": "git",
+    "allow_commit": true,
+    "allow_push": false,
+    "allow_restore": false,
+    "default_remote": "origin"
+  },
+  "github": {
+    "enabled": true,
+    "gh_path": "gh",
+    "repo": "",
+    "default_workflow": "release.yml",
+    "default_ref": "main",
+    "allow_dispatch": true
+  },
+  "database": {
+    "enabled": false,
+    "url": "",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "user": "postgres",
+    "password": "",
+    "database": "postgres",
+    "sslmode": "prefer",
+    "max_rows": 200,
+    "statement_timeout_seconds": 30,
+    "allow_write": false
+  }
+}
