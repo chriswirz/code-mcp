@@ -1,0 +1,138 @@
+name: build-and-publish
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # The release version is derived from the run number alone: 0.1.NNNN, padded
+  # to four places, so tags and package versions sort in build order and there
+  # is one authority for what this build is called.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - id: compute
+        run: printf 'version=0.1.%04d\n' "${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go test ./...
+
+  build:
+    needs: [test, version]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64, ext: .exe }
+          - { goos: windows, goarch: arm64, ext: .exe }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          name="codemcp-${GOOS}-${GOARCH}${{ matrix.ext }}"
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "dist/${name}" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codemcp-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  package:
+    needs: [build, version]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: codemcp-linux-${{ matrix.arch }}
+          path: dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Install nfpm
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+      - name: Build .deb and .rpm
+        env:
+          ARCH: ${{ matrix.arch }}
+          # The same version the binary was stamped with and the release is
+          # tagged with, which deb and rpm both accept as a numeric version.
+          PKG_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cp "dist/codemcp-linux-${ARCH}" packaging/codemcp
+          chmod +x packaging/codemcp
+          mkdir -p out
+          nfpm package -f packaging/nfpm.yaml -p deb -t out/
+          nfpm package -f packaging/nfpm.yaml -p rpm -t out/
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codemcp-packages-${{ matrix.arch }}
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [build, package, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+      - name: Collect binaries
+        run: |
+          mkdir -p dist
+          find staging -type f -exec mv {} dist/ \;
+          cd dist && sha256sum * > SHA256SUMS
+          ls -l
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # The tag is the version itself: 0.1.0042 names the release and is
+          # what `codemcp --version` prints from the binaries inside it.
+          gh release create "$VERSION" dist/* \
+            --title "codemcp $VERSION" \
+            --notes "Automated build of \`${{ github.sha }}\` from \`${{ github.ref_name }}\`." \
+            --latest
