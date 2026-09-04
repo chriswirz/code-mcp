@@ -1,0 +1,70 @@
+# systemd unit for the code-mcp MCP server.
+#
+# The binary is a long-running server: it serves MCP over Streamable HTTP on
+# the URL in ExecStart below and exposes the workspace's files, git checkout
+# and project commands as tools. See README.md.
+#
+# No config file is deployed: everything the device needs is on the command
+# line below, so a redeploy cannot overwrite settings made on the machine. Drop
+# a /opt/code-mcp/config.json there yourself if you want commands, database
+# credentials or anything else the flags do not cover - the server picks it up
+# from its working directory, and re-reads it before every request.
+#
+# __USER__, __WORKSPACE__, __URL__, __TOKEN_FLAG__ and __ORIGIN_FLAG__ are
+# placeholders that
+# deploy-ubuntu.ps1 (and deploy.sh) substitute before the unit is installed.
+# Editing this file by hand means substituting them yourself.
+#
+# Install:
+#   sudo useradd --system --home /opt/code-mcp --shell /usr/sbin/nologin codemcp
+#   sudo mkdir -p /opt/code-mcp __WORKSPACE__
+#   sudo cp dist/codemcp-linux-arm64 /opt/code-mcp/codemcp
+#   sudo chown -R codemcp:codemcp /opt/code-mcp __WORKSPACE__
+#   sudo cp deploy/code-mcp.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now code-mcp.service
+#   journalctl -u code-mcp -f                   # follow logs
+
+[Unit]
+Description=code-mcp Model Context Protocol server
+Documentation=https://github.com/chriswirz/code-mcp
+# The server binds a TCP listener; wait for the network to be up so a bind to a
+# specific address does not fail on boot.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=/opt/code-mcp
+# --url binds the listener (0.0.0.0 to be reachable from the network) and
+# --workspace is what bounds every file tool. Add --token to require a bearer
+# token, which you want on any address that is not loopback, and --allow-origin
+# for the origins a browser-based client connects from.
+ExecStart=/opt/code-mcp/codemcp --url __URL__ --workspace __WORKSPACE____TOKEN_FLAG____ORIGIN_FLAG__
+
+Restart=on-failure
+RestartSec=10s
+# SIGINT is what the server's signal handler shuts down on.
+KillSignal=SIGINT
+TimeoutStopSec=30s
+
+# Hardening. run_command and the git tools still work under all of it; the two
+# to know about are:
+#   - NoNewPrivileges blocks the sudo section outright. Drop it if you have
+#     configured sudo.password and actually want the server to elevate.
+#   - ProtectSystem=strict makes the whole filesystem read-only apart from the
+#     ReadWritePaths below, so a workspace somewhere else needs adding there.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/code-mcp __WORKSPACE__
+
+[Install]
+WantedBy=multi-user.target
